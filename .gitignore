@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+env/
+
+# Visual Studio Code
+.vscode/
+
+# PlatformIO
+.pio/
+.pvt/
+
+# macOS
+.DS_Store

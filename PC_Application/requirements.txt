@@ -1,0 +1,7 @@
+requests
+numpy
+paddlepaddle-gpu  # 默认推荐GPU
+# paddlepaddle    #   或者自己选择
+paddleocr
+opencv-python
+PySide6
