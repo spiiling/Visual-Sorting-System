@@ -1,0 +1,70 @@
+Configuration	car
+STM32CubeMX 	6.8.1
+Date	05/14/2025
+MCU	STM32U575RITx
+
+
+
+PERIPHERALS	MODES	FUNCTIONS	PINS
+PWR:Low Power	Dead Battery Signals disabled	PWR_VS_DBSignals	VP_PWR_VS_DBSignals
+PWR:Low Power	Power saving mode	PWR_VS_LPOM	VP_PWR_VS_LPOM
+PWR:Security/Privilege attributes	Privilege attributes	PWR_VS_SECSignals	VP_PWR_VS_SECSignals
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+26	PB0	GPIO_EXTI0	Red_min
+27	PB1	GPIO_EXTI1	Red_L1
+28	PB2	GPIO_EXTI2	Red_L2
+45	PA12	GPIO_Output	CAR_PWMA
+46	PA13 (JTMS/SWDIO)	GPIO_Output	AIN2
+49	PA14 (JTCK/SWCLK)	GPIO_Output	AIN1
+50	PA15 (JTDI)	GPIO_Output	CAR_STBY
+55	PB3 (JTDO/TRACESWO)	GPIO_EXTI3	Red_
+56	PB4 (NJTRST)	GPIO_EXTI4	
+PERIPHERALS	MODES	FUNCTIONS	PINS
+PWR:Low Power	Dead Battery Signals disabled	PWR_VS_DBSignals	VP_PWR_VS_DBSignals
+PWR:Low Power	Power saving mode	PWR_VS_LPOM	VP_PWR_VS_LPOM
+PWR:Security/Privilege attributes	Privilege attributes	PWR_VS_SECSignals	VP_PWR_VS_SECSignals
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+26	PB0	GPIO_EXTI0	Red_min
+27	PB1	GPIO_EXTI1	Red_L1
+28	PB2	GPIO_EXTI2	Red_L2
+45	PA12	GPIO_Output	CAR_PWMA
+46	PA13 (JTMS/SWDIO)	GPIO_Output	AIN2
+49	PA14 (JTCK/SWCLK)	GPIO_Output	AIN1
+50	PA15 (JTDI)	GPIO_Output	CAR_STBY
+55	PB3 (JTDO/TRACESWO)	GPIO_EXTI3	Red_
+56	PB4 (NJTRST)	GPIO_EXTI4	
+
+
+
+SOFTWARE PROJECT
+
+Project Settings : 
+Project Name : car
+Project Folder : E:\STM32U575_Car\car
+Toolchain / IDE : MDK-ARM V5.32
+Firmware Package Name and Version : STM32Cube FW_U5 V1.2.0
+
+
+Code Generation Settings : 
+STM32Cube MCU packages and embedded software packs : Copy only the necessary library files
+Generate peripheral initialization as a pair of '.c/.h' files per peripheral : Yes
+Backup previously generated files when re-generating : No
+Delete previously generated files when not re-generated : Yes
+Set all free pins as analog (to optimize the power consumption) : No
+
+
+Toolchains Settings : 
+Compiler Optimizations : 
+
+
+
+
+
