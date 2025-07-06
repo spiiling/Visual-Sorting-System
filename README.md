@@ -1,4 +1,4 @@
-# ESP32-S3 智能视觉分拣系统 (FreeRTOS + PaddleOCR)
+# 智能视觉分拣系统 (FreeRTOS + PaddleOCR)
 
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python) ![ESP32-S3](https://img.shields.io/badge/ESP32--S3-IDF%20%26%20Arduino-orange?logo=espressif) ![FreeRTOS](https://img.shields.io/badge/FreeRTOS-Real--Time-green) ![PaddleOCR](https://img.shields.io/badge/PaddleOCR-OCR-red) ![License](https://img.shields.io/badge/License-MIT-brightgreen)
 
