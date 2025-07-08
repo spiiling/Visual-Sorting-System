@@ -91,7 +91,7 @@
 
 | 版本 | 平台/语言 | 状态 | 描述 |
 | :--- | :--- | :--- | :--- |
-| **[PC端Python版](./versions/PC_Python_OCR/)** | `PC` / `Python` | ✅ **稳定可用** | 功能最全，性能最强。使用PySide6构建图形界面，支持GPU加速，适合快速开发和算法验证。|
+| **[PC端Python版](./versions/PC_Application/)** | `PC` / `Python` | ✅ **稳定可用** | 功能最全，性能最强。使用PySide6构建图形界面，支持GPU加速，适合快速开发和算法验证。|
 | **[树莓派C++版](./versions/RPi_CPP_OCR/)** | `Raspberry Pi` / `C++` | ✅ **稳定可用** | 专为树莓派优化的边缘部署版本。性能高，资源占用低，可独立运行。 |
 | **[T113-S3版](./versions/T113-S3_OCR/)** | `Allwinner T113-S3` / `C++`| 🚧 **计划中** | 探索在更具性价比的嵌入式Linux芯片上部署的极限可能。 |
 | **[ESP32-S3主控固件](./versions/ESP32-S3_Firmware/)** | `ESP32-S3` / `Arduino(C++)` | ✅ **稳定可用** | 负责所有硬件驱动和实时任务的核心固件。|
