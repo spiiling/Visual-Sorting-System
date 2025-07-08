@@ -51,6 +51,26 @@
 /* USER CODE BEGIN PV */
 //状态标志位
 //Car
+//舵机状态   is_unloading_flag
+// 0: 空闲
+// 1: 准备开始，开门
+// 2: 等待门打开
+// 3: 门已开，推杆伸出
+// 4: 等待推杆伸出
+// 5: 推杆已伸出，收回推杆
+// 6: 等待推杆收回
+// 7: 推杆已收回，关门
+// 8: 等待门关闭
+#define SERVO_PUSHER_TIMER        htim1  //舵机1使用的定时器
+#define SERVO_PUSHER_CHANNEL      TIM_CHANNEL_1
+#define SERVO_PUSHER_RETRACT_POS  500    // 收回位置 (0度)
+#define SERVO_PUSHER_EXTEND_POS   2500   // 伸出位置 (180度)
+
+#define SERVO_DOOR_TIMER          htim3  //明确舵机2使用的定时器
+#define SERVO_DOOR_CHANNEL        TIM_CHANNEL_1
+#define SERVO_DOOR_CLOSE_POS      500    // 关门位置 (例如0度)
+#define SERVO_DOOR_OPEN_POS       2500   // 开门位置 (例如180度)
+#define SERVO_ACTION_DELAY        800   // 每个舵机动作后等待0.8秒，确保动作完成
 volatile uint16_t is_unloading_flag = 0;  			 	// 是否正在执行卸货动作
 volatile uint32_t unload_start_time = 0;   				// 记录卸货开始的时间
 
@@ -175,6 +195,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM8_Init();
   MX_USART3_UART_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 	//与ADC有关
 	HAL_PWREx_EnableVddA();		//启用VDDA电压域
@@ -189,12 +210,14 @@ int main(void)
 	}
 	HAL_Delay(1000);//ADC初始化需要时间
 	//启动 PWM 通道
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);//舵机
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);//舵机1		推杆
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);//舵机2		门
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);//电机
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);//电机
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);//电机
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_4);//电机
-	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,500);	//舵机复原  0度
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,500);	//舵机1复原  0度
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,500);	//舵机2复原  0度
 	//电机，默认50%pwm
     HAL_GPIO_WritePin(CAR_STBY_GPIO_Port,CAR_STBY_Pin,1);//使能STBY 1是使能，0是不使能
 	HAL_GPIO_WritePin(CAR_STBY_2_GPIO_Port,CAR_STBY_2_Pin,1);//使能STBY_2	1是使能，0是不使能
@@ -437,8 +460,6 @@ int main(void)
 					 {
 						 printf("启动卸货流程...\r\n");
 						 is_unloading_flag = 1; // 进入卸货状态1：舵机伸出
-						 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,2500); // 舵机伸出
-						 unload_start_time = HAL_GetTick(); // 记录当前时间
 					 }				 
 				 }
 				 else if((black_num == downsomething_num) && HAL_GPIO_ReadPin(TCRT_5k_GPIO_Port,TCRT_5k_Pin)==1)//到达卸货停车点且已经卸下货物
@@ -481,25 +502,65 @@ int main(void)
       flag_adc_vlau = 0;
     }
 	//非阻塞式延时执行舵机程序 800ms
-	if(is_unloading_flag == 1) // 如果正在等待舵机伸出
+	if(is_unloading_flag == 1) // 状态1: 开门 (舵机2动作)
     {
-        if(HAL_GetTick() - unload_start_time > 800) // 判断800ms是否已到
+        printf("卸货步骤1: 开门 (TIM3_CH1)...\r\n");
+        __HAL_TIM_SET_COMPARE(&SERVO_DOOR_TIMER, SERVO_DOOR_CHANNEL, SERVO_DOOR_OPEN_POS);
+        unload_start_time = HAL_GetTick(); // 记录当前时间
+        is_unloading_flag = 2; // 进入下一个状态：等待门打开
+    }
+    else if(is_unloading_flag == 2) // 状态2: 等待门打开
+    {
+        if(HAL_GetTick() - unload_start_time > SERVO_ACTION_DELAY)
         {
-            is_unloading_flag = 2; // 进入卸货状态2：舵机收回
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,500); // 舵机收回
-            unload_start_time = HAL_GetTick(); // 重新记录时间
+            is_unloading_flag = 3; // 延时结束，进入下一个状态
         }
     }
-    else if(is_unloading_flag == 2) // 如果正在等待舵机收回
+    else if(is_unloading_flag == 3) // 状态3: 伸出推杆 (舵机1动作)
     {
-        if(HAL_GetTick() - unload_start_time > 800) // 判断第二个800ms是否已到
+        printf("卸货步骤2: 伸出推杆 (TIM1_CH1)...\r\n");
+        __HAL_TIM_SET_COMPARE(&SERVO_PUSHER_TIMER, SERVO_PUSHER_CHANNEL, SERVO_PUSHER_EXTEND_POS);
+        unload_start_time = HAL_GetTick(); // 重新记录时间
+        is_unloading_flag = 4; // 进入下一个状态：等待推杆伸出
+    }
+    else if(is_unloading_flag == 4) // 状态4: 等待推杆伸出
+    {
+        if(HAL_GetTick() - unload_start_time > SERVO_ACTION_DELAY)
         {
-            printf("卸货动作完成，检查结果。\r\n");
+            is_unloading_flag = 5; // 延时结束，进入下一个状态
+        }
+    }
+    else if(is_unloading_flag == 5) // 状态5: 收回推杆 (舵机1动作)
+    {
+        printf("卸货步骤3: 收回推杆 (TIM1_CH1)...\r\n");
+        __HAL_TIM_SET_COMPARE(&SERVO_PUSHER_TIMER, SERVO_PUSHER_CHANNEL, SERVO_PUSHER_RETRACT_POS);
+        unload_start_time = HAL_GetTick(); // 重新记录时间
+        is_unloading_flag = 6; // 进入下一个状态：等待推杆收回
+    }
+    else if(is_unloading_flag == 6) // 状态6: 等待推杆收回
+    {
+        if(HAL_GetTick() - unload_start_time > SERVO_ACTION_DELAY)
+        {
+            // 此时舵机1已经卸完货
+            is_unloading_flag = 7; // 延时结束，进入下一个状态
+        }
+    }
+    else if(is_unloading_flag == 7) // 状态7: 关门 (舵机2动作)
+    {
+        printf("卸货步骤4: 关门 (TIM3_CH1)...\r\n");
+        __HAL_TIM_SET_COMPARE(&SERVO_DOOR_TIMER, SERVO_DOOR_CHANNEL, SERVO_DOOR_CLOSE_POS);
+        unload_start_time = HAL_GetTick(); // 重新记录时间
+        is_unloading_flag = 8; // 进入下一个状态：等待门关闭
+    }
+    else if(is_unloading_flag == 8) // 状态8: 等待门关闭
+    {
+        if(HAL_GetTick() - unload_start_time > SERVO_ACTION_DELAY)
+        {
+            printf("卸货动作全部完成！\r\n");
             is_unloading_flag = 0; // 卸货流程结束，复位标志
-            // (注意：这里需要将原来卸货成功的代码移到这里)
         }
     }
-	
+
 	if(go_flag){
 	 car_forward_4wd(base_speed_straight, base_speed_straight);
 	}
