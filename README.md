@@ -56,6 +56,32 @@
 +-----------+
 ```
 
+```mermaid
+graph LR
+    subgraph "远程配置 (云端)"
+        A[<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/wechat.png' width='30' /> 用户/小程序] -->|1. 设置关键字| B((<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/cloud.png' width='30' /> 巴法云));
+    end
+
+    subgraph "AI决策 (边缘)"
+        C[<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/camera.png' width='30' /> 摄像头] -->|3. 视频流| D{<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/raspberry-pi.png' width='30' /> AI识别端<br>(PC/树莓派)};
+        B -->|2. 拉取关键字 (HTTPS)| D;
+    end
+
+    subgraph "物理执行 (终端)"
+        D -->|4. 派发指令 (HTTP)| E[<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/esp32.png' width='30' /> ESP32-S3主控<br>(FreeRTOS)];
+        E -->|5. 舵机/传感器控制| F(<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/robotic-arm.png' width='30' /> 传送带/分拣口);
+        E -->|6. 取货指令 (TCP)| G[<img src='https://raw.githubusercontent.com/spiiling/Visual-Sorting-System/main/docs/icons/car.png' width='30' /> STM32U5小车];
+    end
+
+    style A fill:#D5E8D4,stroke:#82B366
+    style B fill:#DAE8FC,stroke:#6C8EBF
+    style C fill:#FFE6CC,stroke:#D79B00
+    style D fill:#F8CECC,stroke:#B85450
+    style E fill:#E1D5E7,stroke:#9673A6
+    style F fill:#FFF2CC,stroke:#D6B656
+    style G fill:#FFF2CC,stroke:#D6B656
+
+
 ---
 
 ## 核心功能与亮点

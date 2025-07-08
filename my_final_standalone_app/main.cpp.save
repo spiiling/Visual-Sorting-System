@@ -1,0 +1,310 @@
+// ====================================================================================
+// ================== 最终决战胜利版 main.cpp (中文注释) ==================
+// ====================================================================================
+
+#include <iostream>
+#include <vector>
+#include <string>
+#include <fstream>
+#include <chrono>
+#include <memory>
+#include <algorithm>
+#include <numeric>
+#include <cmath>
+
+#include <opencv2/opencv.hpp>
+#include "paddle_api.h"
+
+using namespace paddle::lite_api;
+
+// --- 配置区域 ---
+
+const std::string REC_MODEL_FILE = "./rec_model_v4_native.nb"; // 使用在树莓派上原生转换的V4模型
+const std::string CLS_MODEL_FILE = "./cls_model.nb";
+const std::string DICT_FILE = "./ppocr_keys_v3.txt";           // 使用与V4配套的字典
+const std::string DET_MODEL_FILE = "./det_model.nb";
+const bool USE_ANGLE_CLS = false;                          // 保持禁用方向分类器，这是最稳定的选择
+const int CPU_THREADS = 2;
+const int CAMERA_INDEX = 0;
+const int DET_TARGET_WIDTH = 640;                          // 我们将图像缩放到这个宽度进行检测
+const double DET_DB_THRESH = 0.3;
+const double DET_DB_BOX_THRESH = 0.6;
+const double DET_DB_UNCLIP_RATIO_H = 10.0; // 垂直方向（高度）的膨胀，可以设置大一点
+const double DET_DB_UNCLIP_RATIO_W = 8.0; // 水平方向（宽度）的膨胀
+const int REC_IMG_H = 48;
+
+// --- 辅助函数 ---
+
+std::shared_ptr<PaddlePredictor> LoadModel(const std::string& model_path) {
+    MobileConfig config;
+    config.set_model_from_file(model_path);
+    config.set_threads(CPU_THREADS);
+    config.set_power_mode(LITE_POWER_HIGH);
+    auto predictor = CreatePaddlePredictor<MobileConfig>(config);
+    std::cout << "[INFO] 模型加载成功: " << model_path << std::endl;
+    return predictor;
+}
+
+std::vector<std::string> LoadDict(const std::string& path) {
+    std::ifstream file(path);
+    std::vector<std::string> dict;
+    std::string line;
+    while (std::getline(file, line)) {
+        dict.push_back(line);
+    }
+    return dict;
+}
+
+// 修正后的ResizeImg函数，强制缩放并返回精确的比例
+void ResizeImg(const cv::Mat& img, cv::Mat& resize_img, int target_w, float& ratio_h, float& ratio_w) {
+    int w = img.cols;
+    int h = img.rows;
+    float ratio = (float)target_w / w;
+    int target_h = (int)(h * ratio);
+    int resize_w = std::max((int)(round((float)target_w / 32) * 32), 32);
+    int resize_h = std::max((int)(round((float)target_h / 32) * 32), 32);
+    cv::resize(img, resize_img, cv::Size(resize_w, resize_h));
+    ratio_w = (float)resize_w / w;
+    ratio_h = (float)resize_h / h;
+}
+
+void Normalize(const cv::Mat& img, std::vector<float>& output_data, float* mean, float* scale) {
+    cv::Mat norm_img;
+    img.convertTo(norm_img, CV_32FC3, 1.0 / 255.0, 0);
+    int channels = 3, height = norm_img.rows, width = norm_img.cols;
+    output_data.resize(channels * height * width);
+    float* base = output_data.data();
+    for (int h = 0; h < height; ++h) {
+        for (int w = 0; w < width; ++w) {
+            for (int c = 0; c < channels; ++c) {
+                base[c * height * width + h * width + w] = (norm_img.at<cv::Vec3f>(h, w)[c] - mean[c]) / scale[c];
+            }
+        }
+    }
+}
+
+// 几何精调修复：对角点进行排序以保证裁剪的稳定性
+std::vector<cv::Point2f> OrderPoints(const std::vector<cv::Point>& box) {
+    std::vector<cv::Point2f> sorted_points(4);
+    std::vector<int> sum, diff;
+    for(const auto& p : box) {
+        sum.push_back(p.x + p.y);
+        diff.push_back(p.y - p.x);
+    }
+    sorted_points[0] = box[std::min_element(sum.begin(), sum.end()) - sum.begin()];      // top-left
+    sorted_points[2] = box[std::max_element(sum.begin(), sum.end()) - sum.begin()];      // bottom-right
+    sorted_points[1] = box[std::min_element(diff.begin(), diff.end()) - diff.begin()];   // top-right
+    sorted_points[3] = box[std::max_element(diff.begin(), diff.end()) - diff.begin()];   // bottom-left
+    return sorted_points;
+}
+
+// 最终加固版的图像裁剪函数
+cv::Mat GetRotateCropImage(const cv::Mat& source, const std::vector<cv::Point>& box) {
+    std::vector<cv::Point2f> src_points = OrderPoints(box);
+    
+    // 在这里定义width和height
+    float w1 = std::sqrt(std::pow(src_points[0].x - src_points[1].x, 2) + std::pow(src_points[0].y - src_points[1].y, 2));
+    float w2 = std::sqrt(std::pow(src_points[3].x - src_points[2].x, 2) + std::pow(src_points[3].y - src_points[2].y, 2));
+    float h1 = std::sqrt(std::pow(src_points[1].x - src_points[2].x, 2) + std::pow(src_points[1].y - src_points[2].y, 2));
+    float h2 = std::sqrt(std::pow(src_points[0].x - src_points[3].x, 2) + std::pow(src_points[0].y - src_points[3].y, 2));
+    float width = std::max(w1, w2);
+    float height = std::max(h1, h2);
+
+    // 最终修正：将 h 修正为 height
+    cv::Point2f dst_points[4] = {{0.f, 0.f}, {width - 1, 0.f}, {width - 1, height - 1}, {0.f, height - 1}};
+    
+    // 使用.data()来获取底层指针，修复编译错误
+    cv::Mat M = cv::getPerspectiveTransform(src_points.data(), dst_points);
+
+    cv::Mat dst_img;
+    cv::warpPerspective(source, dst_img, M, cv::Size(width, height), cv::BORDER_REPLICATE);
+    return dst_img;
+}
+
+std::vector<std::vector<cv::Point>> BoxesFromBitmap(const cv::Mat& pred, const cv::Mat& bitmap, float box_thresh, float unclip_ratio) {
+    const int min_area = 3;
+    const int max_candidates = 1000;
+
+    std::vector<std::vector<cv::Point>> boxes;
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(bitmap, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+    if (contours.size() > max_candidates) {
+        contours.resize(max_candidates);
+    }
+
+    for (const auto& contour : contours) {
+        if (cv::contourArea(contour) < min_area) {
+            continue;
+        }
+
+        cv::Mat roi_pred;
+        pred(cv::boundingRect(contour)).copyTo(roi_pred, bitmap(cv::boundingRect(contour)));
+        if (cv::mean(roi_pred)[0] < box_thresh) {
+            continue;
+        }
+
+        // =======================================================================
+        // ================ 全新修正版 UNCLIP 逻辑 (可调宽高) ==================
+        // =======================================================================
+        cv::RotatedRect min_rect = cv::minAreaRect(contour);
+
+        // 注意：这里我们不再使用全局的 unclip_ratio，而是直接使用新的 H 和 W 比例
+        // 您需要在函数调用处传入这两个参数，或者直接在函数内使用全局变量
+        // 为了方便，我们直接使用您在顶部定义的全局变量
+        const double unclip_ratio_h = DET_DB_UNCLIP_RATIO_H;
+        const double unclip_ratio_w = DET_DB_UNCLIP_RATIO_W;
+                
+        float arc_length = cv::arcLength(contour, true);
+
+        // 1. 计算在高度和宽度上分别需要增加多少像素
+        //    我们保留和您原始公式类似的结构，但使用独立的比例，并增大系数
+        float expand_h = arc_length * unclip_ratio_h * 0.01; // 增大系数以获得更明显效果
+        float expand_w = arc_length * unclip_ratio_w * 0.01;
+
+        // 2. 直接在旋转矩形的尺寸上增加
+        //    注意：对于水平文字，min_rect.size.height 是高度，min_rect.size.width 是宽度
+        //    OpenCV 的 minAreaRect 会保证 width >= height
+        if (min_rect.size.width < min_rect.size.height) {
+            // 如果矩形是垂直的，交换一下增量
+            std::swap(expand_h, expand_w);
+        }
+        min_rect.size.height += expand_h;
+        min_rect.size.width += expand_w;
+
+        // 3. 从被放大了的矩形中获取新的四个角点
+        cv::Point2f rect_points[4];
+        min_rect.points(rect_points);
+
+        // 4. 将角点存入结果
+        std::vector<cv::Point> expanded_box;
+        for(int i = 0; i < 4; i++) {
+            expanded_box.push_back(cv::Point(rect_points[i].x, rect_points[i].y));
+        }
+        boxes.push_back(expanded_box);
+    }
+    return boxes;
+}
+
+std::pair<std::string, float> CTCGreedyDecode(const std::unique_ptr<const Tensor>& tensor, const std::vector<std::string>& dict) {
+    auto* data = tensor->data<float>();
+    auto shape = tensor->shape();
+    std::string text = "";
+    float score = 0.0f;
+    int count = 0, last_index = 0;
+    for (int t = 0; t < shape[1]; ++t) {
+        const float* step_data = data + t * shape[2];
+        int current_index = std::max_element(step_data, step_data + shape[2]) - step_data;
+        if (current_index > 0 && current_index != last_index) {
+            if (current_index < dict.size()) {
+                text += dict[current_index];
+                score += *(step_data + current_index);
+                count++;
+            }
+        }
+        last_index = current_index;
+    }
+    if (count > 0) score /= count;
+    return {text, score};
+}
+
+// ================== 主函数 (最终决战胜利版) ==================
+int main(int argc, char** argv) {
+    auto det_predictor = LoadModel(DET_MODEL_FILE);
+    auto rec_predictor = LoadModel(REC_MODEL_FILE);
+    auto dict = LoadDict(DICT_FILE);
+
+    cv::VideoCapture cap(CAMERA_INDEX);
+    if (!cap.isOpened()) {
+        std::cerr << "错误：无法打开摄像头。" << std::endl;
+        return -1;
+    }
+
+    // --- 终极修复：强制摄像头使用一个合理的分辨率 ---
+    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    
+    double frame_width = cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    double frame_height = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    std::cout << "[INFO] 摄像头分辨率强制设置为: " << frame_width << "x" << frame_height << std::endl;
+
+    float rec_mean[] = {0.5f, 0.5f, 0.5f}, rec_scale[] = {0.5f, 0.5f, 0.5f};
+    float det_mean[] = {0.485f, 0.456f, 0.406f}, det_scale[] = {0.229f, 0.224f, 0.225f};
+
+    while (true) {
+        cv::Mat frame;
+        cap >> frame;
+        if (frame.empty()) continue;
+
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        cv::Mat det_input_img;
+        float ratio_h = 0.f, ratio_w = 0.f; // 定义变量来接收精确的缩放比例
+        ResizeImg(frame, det_input_img, DET_TARGET_WIDTH, ratio_h, ratio_w);
+        
+        std::vector<float> det_input_data;
+        Normalize(det_input_img, det_input_data, det_mean, det_scale);
+        auto input_tensor_det = det_predictor->GetInput(0);
+        input_tensor_det->Resize({1, 3, det_input_img.rows, det_input_img.cols});
+        input_tensor_det->CopyFromCpu<float>(det_input_data.data());
+        det_predictor->Run();
+        auto output_tensor_det = det_predictor->GetOutput(0);
+        auto* out_data_det = output_tensor_det->data<float>();
+        auto out_shape_det = output_tensor_det->shape();
+        cv::Mat pred_map(out_shape_det[2], out_shape_det[3], CV_32F, (void*)out_data_det);
+        cv::Mat bitmap;
+        pred_map.convertTo(bitmap, CV_8UC1, 255.0);
+        auto boxes = BoxesFromBitmap(pred_map, bitmap, DET_DB_BOX_THRESH, DET_DB_UNCLIP_RATIO_W);
+        
+        // --- 最终修正：使用精确的比例进行坐标还原 ---
+        std::vector<std::vector<cv::Point>> scaled_boxes;
+        for (const auto& box : boxes) {
+            std::vector<cv::Point> scaled_box;
+            for (const auto& point : box) {
+                // 这里我们用除法，将坐标从小图还原到大图
+                scaled_box.push_back(cv::Point(int(point.x / ratio_w), int(point.y / ratio_h)));
+            }
+            scaled_boxes.push_back(scaled_box);
+        }
+        
+        if (scaled_boxes.empty()) {
+            // std::cout << "--------------------------------" << std::endl; // Keep terminal clean
+            cv::imshow("Final OCR", frame);
+            if (cv::waitKey(1) == 27) break;
+            continue;
+        }
+
+        std::cout << "--------------------------------" << std::endl;
+        for (const auto& box : scaled_boxes) {
+            if (box.size() != 4) continue;
+            // 使用几何精调的函数来裁剪，确保图像方正
+            cv::Mat crop_img = GetRotateCropImage(frame, box);
+            if(crop_img.empty() || crop_img.cols < 10 || crop_img.rows < 10) continue;
+            
+            // --- 文本识别 ---
+            cv::Mat rec_input_img;
+            int rec_img_w = int(crop_img.cols * ((float)REC_IMG_H / crop_img.rows));
+            cv::resize(crop_img, rec_input_img, cv::Size(rec_img_w, REC_IMG_H));
+            std::vector<float> rec_input_data;
+            Normalize(rec_input_img, rec_input_data, rec_mean, rec_scale);
+            auto input_tensor_rec = rec_predictor->GetInput(0);
+            input_tensor_rec->Resize({1, 3, REC_IMG_H, rec_img_w});
+            input_tensor_rec->CopyFromCpu<float>(rec_input_data.data());
+            rec_predictor->Run();
+            auto output_tensor_rec = rec_predictor->GetOutput(0);
+            auto rec_result = CTCGreedyDecode(output_tensor_rec, dict);
+            
+            if (!rec_result.first.empty()) {
+                std::cout << "[结果] 文本: " << rec_result.first << ", 置信度: " << rec_result.second << std::endl;
+                for(int i = 0; i < 4; ++i) cv::line(frame, box[i], box[(i + 1) % 4], cv::Scalar(0, 255, 0), 2);
+            }
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        double total_time = std::chrono::duration<double>(end - start).count() * 1000;
+        std::cout << "[INFO] 总处理时间: " << total_time << " ms" << std::endl;
+        cv::imshow("Final OCR", frame);
+        if (cv::waitKey(1) == 27) break;
+    }
+    return 0;
+}

@@ -41,7 +41,7 @@ const int CLS_IMG_W = 192;
 // --- 巴法云配置 ---
 const std::string BAFA_API_HOST = "api.bemfa.com";            
 const std::string BAFA_API_PATH = "/api/device/v1/data/1/";   
-const std::string BAFA_PRIVATE_KEY = "YOUR_BAFA_PRIVATE_KEY"; 
+const std::string BAFA_PRIVATE_KEY = "e5c8ddfd8af0ee7addbc053afb441bf5"; 
 const std::vector<std::string> BAFA_TOPICS = {"SG1date006", "SG2date006", "SG3date006"}; 
 const double KEYWORD_FETCH_INTERVAL_SECONDS = 30.0; 
 // --- ESP32通信配置 ---

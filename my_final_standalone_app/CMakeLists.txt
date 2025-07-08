@@ -1,31 +1,28 @@
-# CMakeLists.txt (最终版)
+# CMakeLists.txt (For Raspberry Pi local build)
 
 cmake_minimum_required(VERSION 3.10)
 project(FinalOcrStandaloneApp CXX)
 
-# --- 依赖库路径 (现在只需要 Paddle-Lite 的) ---
-set(PADDLE_LITE_DIR "/home/dev/workspace/my_project/inference_lite_lib.armlinux.armv8.gcc.with_extra")
-
-# --- 使用 find_package 自动寻找我们 Sysroot 里的 OpenCV ---
-# 这是最关键的修改！它会自动设置好所有 OpenCV 的路径和库。
+# --- 1. Find OpenCV library provided by the system ---
 find_package(OpenCV REQUIRED)
 
-# --- 头文件路径 ---
-include_directories("."
-    "${PADDLE_LITE_DIR}/cxx/include"
-    ${OpenCV_INCLUDE_DIRS}  # 由 find_package 自动提供
+# --- 2. Set include directories ---
+include_directories(
+    ${CMAKE_SOURCE_DIR}/include      # For Paddle-Lite headers
+    ${OpenCV_INCLUDE_DIRS}           # For OpenCV headers
 )
 
+# --- 3. Define the executable ---
 add_executable(final_ocr_app main.cpp)
 
-# --- 链接所有库 ---
+# --- 4. Link all necessary libraries ---
 target_link_libraries(final_ocr_app PRIVATE
-    # Paddle-Lite 库
-    "${PADDLE_LITE_DIR}/cxx/lib/libpaddle_light_api_shared.so"
-    
-    # OpenCV 库 (由 find_package 自动提供，包含了所有模块和依赖)
+    # Path to the Paddle-Lite shared library inside our project
+    "${CMAKE_SOURCE_DIR}/libpaddle_light_api_shared.so"
+
+    # OpenCV libraries (provided by find_package)
     ${OpenCV_LIBS}
 
-    # 系统库
-    pthread dl m rt
+    # System libraries
+    pthread dl m rt ssl crypto
 )
