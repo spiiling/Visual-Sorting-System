@@ -72,7 +72,7 @@
 *   **开发环境**: Arduino IDE
 *   **步骤**:
     1.  在 Arduino IDE 中配置好 ESP8266 开发板环境。
-    2.  打开 `ESP8266_Car_Firmware.ino` 文件（您提供的代码）。
+    2.  打开 `ESP8266_Car_Firmware.ino` 文件。
     3.  **修改 WiFi 信息**:
         ```cpp
         const char* ssid = "YOUR_WIFI_SSID";
